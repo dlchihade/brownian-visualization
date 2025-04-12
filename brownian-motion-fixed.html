@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Data Brownian Motion Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .canvas-container {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            background-color: #000;
+        }
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+        button:hover {
+            background-color: #3367d6;
+        }
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            max-width: 500px;
+            margin: 0 auto 20px auto;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+        .explanation {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        ul {
+            padding-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Neural Data Brownian Motion Visualization</h1>
+        
+        <div class="canvas-container" id="canvas-container"></div>
+        
+        <div class="controls">
+            <button id="toggle-btn">Pause Animation</button>
+            <button id="reset-btn">Reset</button>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #FFC107;"></div>
+                <span>Lion preference (predator)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #1E88E5;"></div>
+                <span>Dog preference</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #D81B60;"></div>
+                <span>Cat preference</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #7CB342;"></div>
+                <span>Other animals</span>
+            </div>
+        </div>
+        
+        <div class="explanation">
+            <h3>How to interpret this visualization:</h3>
+            <ul>
+                <li>Each path represents a patient from the dataset</li>
+                <li>Starting positions are based on three neural metrics: alpha_NET_mean (x), norm_SN_avg (y), and norm_LC_avg (z)</li>
+                <li>Colors represent patient's animal preference (most frequently mentioned animal type)</li>
+                <li>Brownian motion shows potential variation/uncertainty in measurements</li>
+                <li>Patients who mentioned predators have constrained movement in the x-axis</li>
+                <li>Patients who mentioned farm animals have constrained movement in the y-axis</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Data for visualization
+        const animalDataStr = `ID,Item
+PD00020,"Lion,Tiger,Sheep,Dog,Cat,Camel,Monkey,Chimpanzee,Buffalo,Hyena,Dog,Cat,Elephant,Hyena,Dog,Cat,Mouse,Bird,Camel,Dragon"
+PD00048,"Lion,Hare,Elephant,Rhinoceros,Monkey,Giraffe,Cow,Elk,Fish,Horse,Tiger,Leopard,Jaguar"
+PD00119,"Lion,Tiger,Duck,Goose,Deer,Horse,Zebra,Elephant,Bird,Giraffe,Hippo,Crocodile,Elephant,Sheep,Goat,Ewe,Duck"
+PD00146,"Dog,Pig,Chicken,Partridge,Swallow,Squirrel,Rabbit,Horse,Hare,Calf,Bull,Cow,Lion,Tiger,Monkey,Giraffe,Elephant,Snake,Frog,Shark,Whale,Dolphin"
+PD00215,"Donkey,Horse,Cow,Ox,Elephant,Llama,Cat,Dog,Mouse,Tiger,Lion,Leopard,Cheetah,Hyena,Bear,Goat,Partridge,Hare,Manatee,Turtle,Iguana,Frog,Toad"
+PD00219,"Monkey,Lion,Tiger,Horse,Cat,Dog,Snake,Wolf,Coyote,Horse,Cow,Camel,Scorpion"
+PD00267,"Cat,Dog,Lion,Beaver,Jaguar,Elephant,Gazelle,Bear,Fox,Horse,Ox,Calf,Giraffe"
+PD00457,"rhinoceros,fox,tiger,hippopotamus,tiger,lion,leopard,gazelle,dog,cat,horse,cow,sheep,horse,lion,gazelle,turkey"
+PD00458,"Dog,Cat,Hamster,Tiger,Fox,Lion,Rhinoceros,Wolf,Partridge,Coyote,Eagle,Pigeon,Parrot,Crocodile,Whale,Dolphin,Marmot"
+PD00471,"Cat,Dog,Horse,Cow,Calf,Lion,Pig,Monkey,Rhinoceros,Zebra,Elephant,Antelope,Fish,Panther,Camel,Lion,Hare,Crocodile,Rabbit,Mouse,Butterfly,Monkey"
+PD00472,"Cat,dog,duck,Fish,Lark,Horse,pig,snake,crocodile,lion,Gazelle,Zebra,Elephant,Wolf,Fox,Panther,jaguar,Chimpanzee,Panda,Hen,Rooster"
+PD00576,"Wolf,Horse,Camel,Cat,Dog,Tiger,Leopard,Lion,Elephant,Antelope,Caterpillar,Ostrich,Wasp,Ant,Fish,Shark,Crow,Trout,Salmon,Frog,Swallow,Spider,Panther"
+PD00583,"Dog,Cat,Goat,Wolf,Fox,Hippopotamus,Elephant,Rooster,Hen,Turkey,Rabbit,Parrot,Crocodile,Butterfly,Grasshopper"
+PD00647,"Elephant,Tiger,Alligator,Monkey,Butterfly,Whale,Dog,Cat,Rat,Chimpanzee,Cow,Cat,Flea,bird,Insect,Fish"
+PD00653,"Cow,Cat,Bear,Horse,Pig,Dog,Wolf,Bird,Elk,Crocodile,Hippopotamus,Lion,Tiger,Bird,Snake,Pig,Cow,Chicken,Lamb"
+PD00660,"Dog,Cat,Rat,Crocodile,Lion,Tiger,Horse,Cow,Fish,Bird,Hen,Giraffe,Hippopotamus,Chimpanzee,Goat,Fox"
+PD00666,"Cat,Goat,Mouse,Weasel,Cow,Bizon,Horse,Lion,Panther,Elephant,Gazelle,Orangutan,Cat,Eagle,Marmot,Moray eel,Snake,Whale,Shark"
+PD00757,"Dog,Cat,Lion,Tiger,Fox,Snake,Spider,Elephant,Sheep"
+PD00786,"Cat,Dog,Monkey,Hen,Rooster,Pig,Horse,Cow,Calf,Lamb,Sheep,Ox,Chicken,Duck"
+PD00849,"Lion,Hare,Wolf,Fox,Cat,Dog,Tiger,Elephant,Rhinoceros,Ostrich,Zebra,Pheasant,Giraffe,Leopard,Tiger,Cougar"
+PD00869,"Cow,Calf,Horse,Lion,Hippopotamus,Rhinoceros,Monkey,Hen,Rabbit,Pheasant,Parrot,Gazelle,Giraffe,Lion,Marmot,dog,Donkey,Cheetah,Swan,Duck,Mule"
+PD00955,"Dog,Cat,Rat,Mole,Lion,Tiger,Giraffe,Hyena,Leopard,Lynx,Fox,Ram,Horse"
+PD00959,"Tiger,Lion,Hen,Rhino,Hippo,Llama,Giraffe,Goat,Sheep"
+PD00999,"Lion,Tiger,Elephant,Rhinoceros,Crocodile,Coyote,Duck,Camel,Wolf,Hare,Lynx,Turtle,Horse,Cat,Dog,Snake,Panther,Whale,Dolphin"
+PD01003,"Ostrich,Bison,Goat,Zebra,Dog,Cat,Cow,Pig,Hare,Lion,Tiger,Donkey,Monkey,Dog,Vulture,Turtle,Rhinoceros,Whale"
+PD01126,"Dog,Cat,Tiger,Elephant,Cow,Calf,Horse,Panda"
+PD01133,"Dog,Cat,Monkey,Mule,Eel,Tiger,Lion,Moose,Elk,Wolf,Fox,Marmot,Beaver,Gopher,Crow,Giraffe"
+PD01145,"Lion,Tiger,Bear,Wolf,Cat,Goat,Duck,Goose,Bull,Antelope"
+PD01146,"Lion,Cat,Dog,Cow,Sheep,Duck,Giraffe,Pig,Hare,Antelope,Zebra,Camel,Elephant,Rhinoceros,Dog,Donkey,Horse,Goat,Mouse"
+PD01156,"Reptile,Cow,Deer,Salamander,Bear,Fish,Cat,Mouse"
+PD01160,"Lion,Bear,Tiger,Fox,Rat,Cat,Dog,Horse,Monkey,Hippo,Wolf,Deer,Roe deer,Crocodile,Salamander,Reptile,Panda"
+PD01161,"Horse,Cow,Sheep,Ewe,Camel,Hippo,Elephant,Turkey,Cat,Otter,Rabbit,Hare,Tiger,Lion,Snake,Bee,Wasp,Mosquito,Wolf,Fox,Zebra,Coyote,Hen,Bird,Crow"
+PD01199,"Lion,Tiger,Duck,Goose,Roe Deer,Horse,Zebra,Elephant,Bird,Giraffe,Hippopotamus,Crocodile,Elephant,Sheep,Goat,Ewe,Duck"
+PD01201,"Cat,Dog,Elephant,Lion,Hippopotamus,Rhinoceros,Eagle,Zebra,Panther,Pigeon,Cow"
+PD01223,"Elephant,Lion,Crocodile,Caiman,Snake,Dog,Cat,Fish,Turtle,Skunk"
+PD01225,"Lion,Dog,Cat,Horse,Bird,Eagle,Donkey,Rabbit,Deer,Hare,Bird,Mouse,Rat,Snake,Bird,Camel,Dromedary,Alligator,Crocodile"
+PD01237,"Cat,Dog,Horse,Pig,Pig,Goose,Goat,Dromedary,Gazelle,Zebra,Bull,Swallow,Pigeon,Llama,Fox,Elephant,Marmot,Wildcat,Spider,Seagull,Mongoose,Penguin"
+PD01247,"Albatross,Whale,Bulldog,Poodle,Toad,Donkey,Monkey,Hippopotamus,Ram,Bull,Cat,Dog,Porcupine"
+PD01270,"Lion,Giraffe,Tiger,Panther,Pigeon,Monkey,Wolf,Dog,Cat,Mouse,Horse,Sheep,Camel,Leopard,Emu"
+PD01282,"Cow,Tiger,Lion,Horse,Dog,Cat,Mouse,Snake,Squirrel,Slug,Snail,Monkey,Giraffe,Elephant,Wolf,Fish,Bird"
+PD01284,"Lion,Tiger,Caribou,Owl,Shark,Fish,Monkey,Dog,Cat,Alligator,Crocodile,Pelican,Jaguar,Penguin,Cow,Pig,Rooster,Raccoon,Beaver"
+PD01290,"Dog,Cat,Rabbit,Lion,Lamb,Unicorn,Tiger,Elephant,Camel,Mole"
+PD01306,"Dog,Cat,Raccoon,Lion,Elephant,Giraffe,Leopard,Tiger,Eagle,Turtle,Horse,Wolf,Hare,Horse,Cow,Mule,Sheep,Llama,Donkey,Parrot,Crow,Finch"
+PD01312,"Dog,Cat,Horse,Goat,Sheep,Hen,Weasel,Hedgehog,Rabbit,Lion,Tiger,Monkey,Meerkat,Hippopotamus,Rhino,Zebra,Elephant,Panther,Jaguar,Chimpanzee,Gibbon,Fox,Raccoon,Rat,Elephant,Otter,Camel"
+PD01319,"Dog,Cat,Mouse,Rat,Lion,Elephant,Tiger,Giraffe,Zebra,Eagle,Deer,Wolf,Fox,Bear,Cow,Ox"
+PD01369,"Cat,Dog,Mouse,Rat,Snake,Caiman,Tiger,Giraffe,Fox,Crocodile,Lion,Elephant,Tiger,Deer,Crocodile,Dolphin,Otter,Whale,Dog,Swallow,Jaguar,Zebra,Mouse"
+PD01377,"Cat,Dog,Mosquito,Vulture,Cow,Bull,Dromedary,Goat,Parrot,Monkey,Leopard,Lion,Tiger,Zebra,Giraffe,Squirrel,Bird,Crocodile,Hen,Wolf,Rabbit"
+PD01435,"Rhinoceros,Dog,Mouse,Zebra,Raccoon,Wildcat,Kangaroo,Bear,Weasel,Skunk,Elephant,Monkey,Bull,Cow,Wolf,Wild boar,Fox"
+PD01440,"Horse,Fox,Dog,Deer,Eagle,Goat,Cat,Raccoon,Dromedary,Camel,Rhinoceros,Lion,Tiger,Whale,Dolphin,Elephant"
+PD01457,"Horse,Dog,Cat,Lion,Bird,Sheep,Giraffe,Whale,Hummingbird,Hippopotamus,Leopard,Deer,Panther"
+PD01485,"Horse,Cow,Hen,Pig,Parrot,Parakeet,Snake,Tiger,Lion,Crow,Sheep,Goat,Mare,Moose,Zebra,Pig,Squirrel"
+PD01559,"Dog,Cat,Perch,Golden eagle,Blackbird,Panther,Cow,Pig,Fox,Partridge,Gazelle,Hare,Jellyfish,Lizard,Tench,Fish,Shark,Cod"
+PD01623,"Dog,Cat,Hippopotamus,Giraffe,Lion,Zebra,Mammoth,Blue Whale,Dolphin,Humpback Whale,Whale,Eel,Tiger,Chimpanzee"
+PD01660,"Lion,Bear,Tiger,Fox,Dog,Cat,Rat,Mouse,Horse,Monkey,Hippopotamus,Ox,Deer,Roe Deer,Crocodile,Salamander,Turtle"
+PD01667,"Dog,Cat,Horse,Cow,Hen,Chick,Swan,Bird,Giraffe,Lion,Zebra,Gazelle,Monkey,Chimpanzee,Squirrel,Frog,Fish,Ox,Chicken"
+PD01715,"Donkey,Boa,Goat,Frog,Zebra,Hippopotamus,Elephant,Bird,Crocodile,Caiman,Fox,Wolf,Dog,Horse,Turkey,Chicken"`;
+
+        const megDataStr = `
+PD00020,0.005821693,PD,MRI01,1.14817625,1.158620797,1.044436934,1.016706475,1.153398524,1.030571705
+PD00048,0.002184409,PD,MRI01,1.098492193,1.109323313,1.085092243,0.965901336,1.103907753,1.02549679
+PD00146,0.005128224,PD,MRI01,1.12043934,1.125366723,1.041352235,1.026072416,1.122903032,1.033712326
+PD00215,0.010895761,PD,MRI01,1.124369462,1.147340095,1.107812477,1.04618484,1.135854779,1.076998659
+PD00267,0.008189669,PD,MRI01,1.125531069,1.140897908,0.967051224,1.016658103,1.133214489,0.991854664
+PD00457,0.012298484,PD,MRI01,1.135743887,1.15363705,1.026133289,1.00723257,1.144690469,1.01668293
+PD00458,0.005792042,wh,MRI01,1.109559367,1.097898078,1.002167845,0.990411005,1.103728723,0.996289425
+PD00471,0.01557979,PD,MRI01,1.108482202,1.119510385,1.059153313,1.005142551,1.113996294,1.032147932
+PD00472,0.002845305,PD,MRI01,1.131407474,1.124698698,1.012803178,1.006284571,1.128053086,1.009543875
+PD00576,0.006214223,PD,MRI01,1.13669321,1.101167369,1.010767356,0.980709959,1.11893029,0.995738658
+PD00583,0.011054202,PD,MRI01,1.167059597,1.192501535,1.048418201,1.03093474,1.179780566,1.039676471
+PD00647,0.012765069,PD,MRI01,1.17168617,1.173416059,1.048713887,0.996420128,1.172551115,1.022567008
+PD00653,0.002976496,PD,MRI01,1.121667314,1.125644883,1.057027218,1.022004836,1.123656099,1.039516027
+PD00666,0.007817361,PD,MRI01,1.150401596,1.147735054,1.086564272,1.024473415,1.149068325,1.055518844
+PD00786,0.009724077,PD,MRI01,1.157515977,1.177123247,1.061681281,1.071758478,1.167319612,1.06671988
+PD00849,0.003137561,PD,MRI01,1.135132788,1.119543415,1.035214935,1.00009055,1.127338102,1.017652743
+PD00869,0.004906212,PD,MRI01,1.179676691,1.162712019,1.052869954,1.059981673,1.171194355,1.056425814
+PD00955,0.004907711,PD,MRI01,1.099646414,1.093747264,1.067138195,1.012457489,1.096696839,1.039797842
+PD00959,0.005620251,PD,MRI01,1.178740804,1.18169224,1.047018303,1.017696666,1.180216522,1.032357485
+PD00999,0.007539312,PD,MRI01,1.121039703,1.114581886,1.019246549,1.047996081,1.117810795,1.033621315
+PD01003,0.000208535,PD,MRI01,1.158352227,1.166165487,1.053469281,1.027859965,1.162258857,1.040664623
+PD01126,0.009593198,PD,MRI01,1.150857865,1.161401845,1.040231225,0.936756654,1.156129855,0.98849394
+PD01133,0.010680812,PD,MRI01,1.140434901,1.136423638,1.067105935,1.01522526,1.13842927,1.041165598
+PD01145,0.013859908,PD,MRI01,1.113749657,1.12799097,1.04202595,1.037014288,1.120870314,1.039520119
+PD01146,0.00846295,PD,MRI01,1.135879429,1.145600225,1.062304091,0.971604258,1.140739827,1.016954175
+PD01156,0.006055495,PD,MRI01,1.141696067,1.156531656,1.032215543,1.007290441,1.149113862,1.019752992
+PD01160,0.003374795,PD,MRI01,1.171401262,1.164055444,1.100873266,1.079814085,1.167728353,1.090343676
+PD01161,0.00994361,PD,MRI01,1.140817652,1.13972807,1.029183705,1.017640502,1.140272861,1.023412104
+PD01201,0.007203862,PD,MRI01,1.133900891,1.109959963,1.077411846,1.000333387,1.121930427,1.038872617
+PD01223,0.014742915,PD,MRI01,1.155200022,1.150784689,0.928924197,0.939748166,1.152992356,0.934336182
+PD01225,0.006126801,PD,MRI01,1.15817036,1.167311582,1.045890234,1.024632098,1.162740971,1.035261166
+PD01237,0.006228002,PD,MRI01,1.161751577,1.170066857,1.096360359,1.025476607,1.165909217,1.060918483
+PD01247,0.010700682,PD,MRI01,1.164163271,1.133893525,1.052122159,1.036381196,1.149028398,1.044251678
+PD01270,0.008413686,PD,MRI01,1.17624789,1.17607616,1.009163279,1.038136711,1.176162025,1.023649995
+PD01284,0.005869985,PD,MRI01,1.13403638,1.109575977,1.034757911,0.974893225,1.121806179,1.004825568
+PD01290,0.003746161,PD,MRI01,1.146972445,1.134276733,1.025885657,1.021652488,1.140624589,1.023769073
+PD01306,0.001772092,PD,MRI01,1.171649957,1.164974907,1.100990317,1.034121272,1.168312432,1.067555795
+PD01312,0.011649313,PD,MRI01,1.168236111,1.171257251,1.09582418,1.065116397,1.169746681,1.080470289
+PD01319,0.011121281,PD,MRI01,1.117372555,1.10524261,1.070446072,0.961042878,1.111307583,1.015744475
+PD01369,0.003870708,PD,MRI01,1.18250833,1.166918143,1.103202899,1.016960361,1.174713237,1.06008163
+PD01377,0.02001576,PD,MRI01,1.146505788,1.134881191,1.050975683,1.024639126,1.14069349,1.037807405
+PD01485,0.010696665,PD,MRI01,1.155521698,1.183913381,1.035332854,1.043189044,1.16971754,1.039260949
+PD01559,0.002176473,PD,MRI01,1.185234345,1.164503426,1.072554804,1.074433506,1.174868886,1.073494155
+PD01623,0.013388923,PD,PD01623MRI01,1.110364728,1.101435699,1.073174459,0.997847314,1.105900214,1.035510887
+PD01660,0.009658789,PD,MRI01,1.146810392,1.142374341,1.043183894,1.000483297,1.144592367,1.021833596
+PD01667,0.004057877,PD,MRI01,1.14080379,1.130201021,1.059124791,1.0327146,1.135502406,1.045919696
+PD01715,0.00505598,PD,MRI01,1.100505544,1.118382993,1.047199874,1.012294835,1.109444269,1.029747355`;
+
+        // Main visualization code
+        document.addEventListener('DOMContentLoaded', function() {
+            // Parse data
+            function parseAnimalData() {
+                const parsedData = Papa.parse(animalDataStr, { header: true, skipEmptyLines: true }).data;
+                const processedData = {};
+                
+                parsedData.forEach(row => {
+                    const id = row.ID.replace(/^PD0*/, '');
+                    const animals = row.Item.replace(/"/g, '').split(',').map(a => a.trim().toLowerCase());
+                    
+                    processedData[id] = {
+                        hasPredators: animals.some(a => ['lion', 'tiger', 'wolf', 'fox'].includes(a)),
+                        hasFarmAnimals: animals.some(a => ['cow', 'sheep', 'pig', 'horse'].includes(a)),
+                        dogCount: animals.filter(a => a === 'dog').length,
+                        catCount: animals.filter(a => a === 'cat').length,
+                        lionCount: animals.filter(a => a === 'lion').length
+                    };
+                });
+                
+                return processedData;
+            }
+            
+            function parseMegData() {
+                const lines = megDataStr.trim().split('\n');
+                const processedData = {};
+                
+                lines.forEach(line => {
+                    const values = line.trim().split(',');
+                    const id = values[0].replace(/^PD0*/, '');
+                    
+                    processedData[id] = {
+                        alpha: parseFloat(values[1]),
+                        sn_avg: parseFloat(values[8]),
+                        lc_avg: parseFloat(values[9])
+                    };
+                });
+                
+                return processedData;
+            }
+            
+            // Combine datasets
+            function combineData() {
+                const animalData = parseAnimalData();
+                const megData = parseMegData();
+                const combinedData = [];
+                
+                Object.keys(animalData).forEach(id => {
+                    if (megData[id]) {
+                        const animalPreference = animalData[id].dogCount > animalData[id].catCount && 
+                                                animalData[id].dogCount > animalData[id].lionCount ? 'dog' :
+                                                animalData[id].catCount > animalData[id].dogCount && 
+                                                animalData[id].catCount > animalData[id].lionCount ? 'cat' :
+                                                animalData[id].lionCount > 0 ? 'lion' : 'other';
+                        
+                        combinedData.push({
+                            id,
+                            alpha: megData[id].alpha,
+                            sn_avg: megData[id].sn_avg,
+                            lc_avg: megData[id].lc_avg,
+                            hasPredators: animalData[id].hasPredators,
+                            hasFarmAnimals: animalData[id].hasFarmAnimals,
+                            animalPreference
+                        });
+                    }
+                });
+                
+                return combinedData;
+            }
+            
+            // Normalize data
+            
+            function normalize(val, min, max) {
+                return (val - min) / (max - min);
+            }
+
+            const data = normalizeData(combineData());
+
+            // Setup THREE.js scene
+            const container = document.getElementById('canvas-container');
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Particles
+            const particles = [];
+            const velocities = [];
+
+            data.forEach(d => {
+                const colorMap = {
+                    lion: 0xffc107,
+                    dog: 0x1e88e5,
+                    cat: 0xd81b60,
+                    other: 0x7cb342
+                };
+
+                const material = new THREE.MeshBasicMaterial({ color: colorMap[d.animalPreference] });
+                const geometry = new THREE.SphereGeometry(0.02, 8, 8);
+                const particle = new THREE.Mesh(geometry, material);
+                particle.position.set(d.x, d.y, d.z);
+                scene.add(particle);
+                particles.push(particle);
+
+                velocities.push(new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.01,
+                    (Math.random() - 0.5) * 0.01,
+                    (Math.random() - 0.5) * 0.01
+                ));
+            });
+
+            camera.position.z = 1.5;
+
+            let isPaused = false;
+
+            function animate() {
+                requestAnimationFrame(animate);
+                if (!isPaused) {
+                    particles.forEach((p, i) => {
+                        p.position.add(velocities[i]);
+
+                        ['x', 'y', 'z'].forEach(axis => {
+                            if (Math.abs(p.position[axis]) > 1) {
+                                velocities[i][axis] *= -1;
+                            }
+                        });
+                    });
+                }
+                renderer.render(scene, camera);
+            }
+
+            animate();
+
+            // Controls
+            document.getElementById('toggle-btn').addEventListener('click', () => {
+                isPaused = !isPaused;
+                document.getElementById('toggle-btn').innerText = isPaused ? 'Resume Animation' : 'Pause Animation';
+            });
+
+            document.getElementById('reset-btn').addEventListener('click', () => {
+                particles.forEach((p, i) => {
+                    p.position.set(data[i].x, data[i].y, data[i].z);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
